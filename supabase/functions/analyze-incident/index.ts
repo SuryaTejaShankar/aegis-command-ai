@@ -1,0 +1,182 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+interface IncidentInput {
+  incidentId: string;
+  type: string;
+  description: string;
+  locationName?: string;
+}
+
+interface AIAnalysis {
+  severity: "low" | "medium" | "high" | "critical";
+  immediateActions: string[];
+  resourceRecommendations: string[];
+  reasoning: string;
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { incidentId, type, description, locationName } = await req.json() as IncidentInput;
+    
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
+    }
+
+    console.log(`Analyzing incident ${incidentId}: ${type} - ${description.substring(0, 50)}...`);
+
+    const systemPrompt = `You are an AI assistant for AegisICS, an Incident Command System for smart campuses. 
+Your role is to analyze emergency incidents and provide actionable recommendations for campus security and emergency response teams.
+
+You must analyze incidents and provide:
+1. Severity classification (low, medium, high, critical)
+2. 3-5 immediate response actions
+3. Resource deployment recommendations
+4. Brief reasoning for your assessment
+
+Be concise, professional, and focused on actionable guidance. Prioritize life safety above all else.
+
+Classification guidelines:
+- CRITICAL: Immediate threat to life, active shooter, major fire, mass casualty
+- HIGH: Serious injury, significant property damage, escalating situation
+- MEDIUM: Minor injuries, contained threats, infrastructure issues affecting safety
+- LOW: Minor incidents, non-urgent maintenance, informational reports`;
+
+    const userPrompt = `Analyze this campus incident:
+
+Type: ${type.toUpperCase()}
+Location: ${locationName || "Unknown"}
+Description: ${description}
+
+Provide your analysis in the following JSON format:
+{
+  "severity": "low|medium|high|critical",
+  "immediateActions": ["action1", "action2", "action3"],
+  "resourceRecommendations": ["resource1", "resource2"],
+  "reasoning": "Brief explanation of severity assessment"
+}`;
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        console.error("Rate limit exceeded");
+        return new Response(JSON.stringify({ error: "Rate limits exceeded, please try again later." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (response.status === 402) {
+        console.error("Payment required");
+        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }), {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const errorText = await response.text();
+      console.error("AI gateway error:", response.status, errorText);
+      throw new Error(`AI gateway error: ${response.status}`);
+    }
+
+    const aiResponse = await response.json();
+    const content = aiResponse.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error("No content in AI response");
+    }
+
+    console.log("AI Response:", content);
+
+    // Parse the JSON from the AI response
+    let analysis: AIAnalysis;
+    try {
+      // Extract JSON from potential markdown code blocks
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, content];
+      const jsonStr = jsonMatch[1].trim();
+      analysis = JSON.parse(jsonStr);
+    } catch (parseError) {
+      console.error("Failed to parse AI response:", parseError);
+      // Fallback analysis
+      analysis = {
+        severity: "medium",
+        immediateActions: [
+          "Dispatch nearest available responder to the location",
+          "Secure the immediate area",
+          "Gather additional information from witnesses"
+        ],
+        resourceRecommendations: [
+          "Security personnel",
+          "First aid kit if needed"
+        ],
+        reasoning: "Unable to fully analyze. Defaulting to medium priority for assessment."
+      };
+    }
+
+    // Update the incident in the database with the AI analysis
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (supabaseUrl && supabaseKey) {
+      const updateResponse = await fetch(
+        `${supabaseUrl}/rest/v1/incidents?id=eq.${incidentId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            severity: analysis.severity,
+            ai_analysis: analysis,
+          }),
+        }
+      );
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        console.error("Failed to update incident:", errorText);
+      } else {
+        console.log(`Successfully updated incident ${incidentId} with AI analysis`);
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true, analysis }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Error in analyze-incident function:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+});
