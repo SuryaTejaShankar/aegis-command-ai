@@ -1,4 +1,4 @@
 project_id = "ncfauadwzcfqafnggpxf"
 
 [functions.analyze-incident]
-verify_jwt = true
+verify_jwt = false

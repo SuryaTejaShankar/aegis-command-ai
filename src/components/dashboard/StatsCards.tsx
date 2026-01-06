@@ -7,15 +7,16 @@ interface StatsCardsProps {
 }
 
 export function StatsCards({ incidents }: StatsCardsProps) {
-  const activeIncidents = incidents.filter(i => i.status === 'active');
-  const criticalCount = activeIncidents.filter(i => i.severity === 'critical').length;
-  const highCount = activeIncidents.filter(i => i.severity === 'high').length;
+  const safeIncidents = incidents || [];
+  const activeIncidents = safeIncidents.filter(i => i?.status === 'active');
+  const criticalCount = activeIncidents.filter(i => i?.severity === 'critical').length;
+  const highCount = activeIncidents.filter(i => i?.severity === 'high').length;
   
   const byType = {
-    medical: activeIncidents.filter(i => i.type === 'medical').length,
-    fire: activeIncidents.filter(i => i.type === 'fire').length,
-    security: activeIncidents.filter(i => i.type === 'security').length,
-    infrastructure: activeIncidents.filter(i => i.type === 'infrastructure').length,
+    medical: activeIncidents.filter(i => i?.type === 'medical').length,
+    fire: activeIncidents.filter(i => i?.type === 'fire').length,
+    security: activeIncidents.filter(i => i?.type === 'security').length,
+    infrastructure: activeIncidents.filter(i => i?.type === 'infrastructure').length,
   };
 
   const stats = [

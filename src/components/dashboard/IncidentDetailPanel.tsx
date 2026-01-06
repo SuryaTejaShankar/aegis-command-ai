@@ -151,43 +151,51 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
               </h4>
               
               {/* Immediate Actions */}
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                  Immediate Actions
-                </p>
-                <ul className="space-y-1">
-                  {incident.ai_analysis.immediateActions.map((action, index) => (
-                    <li key={index} className="text-sm flex items-start gap-2">
-                      <span className="text-primary mt-1">•</span>
-                      <span>{action}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {Array.isArray(incident.ai_analysis.immediateActions) && 
+                incident.ai_analysis.immediateActions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Immediate Actions
+                  </p>
+                  <ul className="space-y-1">
+                    {incident.ai_analysis.immediateActions.map((action, index) => (
+                      <li key={index} className="text-sm flex items-start gap-2">
+                        <span className="text-primary mt-1">•</span>
+                        <span>{action}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Resource Recommendations */}
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                  <Users className="h-3 w-3" />
-                  Resource Deployment
-                </p>
-                <ul className="space-y-1">
-                  {incident.ai_analysis.resourceRecommendations.map((resource, index) => (
-                    <li key={index} className="text-sm flex items-start gap-2">
-                      <span className="text-primary mt-1">•</span>
-                      <span>{resource}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {Array.isArray(incident.ai_analysis.resourceRecommendations) &&
+                incident.ai_analysis.resourceRecommendations.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    Resource Deployment
+                  </p>
+                  <ul className="space-y-1">
+                    {incident.ai_analysis.resourceRecommendations.map((resource, index) => (
+                      <li key={index} className="text-sm flex items-start gap-2">
+                        <span className="text-primary mt-1">•</span>
+                        <span>{resource}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* AI Reasoning */}
-              <div className="p-3 bg-secondary/30 rounded-lg">
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-medium">Analysis: </span>
-                  {incident.ai_analysis.reasoning}
-                </p>
-              </div>
+              {incident.ai_analysis.reasoning && (
+                <div className="p-3 bg-secondary/30 rounded-lg">
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium">Analysis: </span>
+                    {incident.ai_analysis.reasoning}
+                  </p>
+                </div>
+              )}
             </div>
           </>
         )}

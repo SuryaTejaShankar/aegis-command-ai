@@ -53,63 +53,80 @@ export function ReportIncidentDialog({ onSuccess }: ReportIncidentDialogProps) {
 
   // Initialize map for location selection
   useEffect(() => {
-    if (!open || !mapRef.current || !window.google) return;
+    if (!open || !mapRef.current) return;
 
-    const mapInstance = new window.google.maps.Map(mapRef.current, {
-      center: { lat: parseFloat(latitude), lng: parseFloat(longitude) },
-      zoom: 15,
-      mapId: 'aegis-report-map',
-      disableDefaultUI: true,
-      zoomControl: true,
-      styles: [
-        { elementType: 'geometry', stylers: [{ color: '#1a1f2e' }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1f2e' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: '#8a9ab0' }] },
-        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a3548' }] },
-        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
-      ],
-    });
+    // Check if Google Maps is available
+    if (!window.google?.maps?.Map || !window.google?.maps?.marker?.AdvancedMarkerElement) {
+      console.warn('Google Maps not available for location picker');
+      return;
+    }
 
-    const markerContent = document.createElement('div');
-    markerContent.innerHTML = `
-      <div style="
-        width: 32px;
-        height: 32px;
-        background-color: hsl(199, 89%, 48%);
-        border: 3px solid white;
-        border-radius: 50%;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      "></div>
-    `;
+    try {
+      const lat = parseFloat(latitude) || 42.3601;
+      const lng = parseFloat(longitude) || -71.0942;
 
-    const markerInstance = new window.google.maps.marker.AdvancedMarkerElement({
-      map: mapInstance,
-      position: { lat: parseFloat(latitude), lng: parseFloat(longitude) },
-      content: markerContent,
-      gmpDraggable: true,
-    });
+      const mapInstance = new window.google.maps.Map(mapRef.current, {
+        center: { lat, lng },
+        zoom: 15,
+        mapId: 'aegis-report-map',
+        disableDefaultUI: true,
+        zoomControl: true,
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#1a1f2e' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1f2e' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#8a9ab0' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a3548' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
+        ],
+      });
 
-    markerInstance.addListener('dragend', () => {
-      const pos = markerInstance.position as google.maps.LatLngLiteral | null;
-      if (pos) {
-        setLatitude(String(pos.lat));
-        setLongitude(String(pos.lng));
-      }
-    });
+      const markerContent = document.createElement('div');
+      markerContent.innerHTML = `
+        <div style="
+          width: 32px;
+          height: 32px;
+          background-color: hsl(199, 89%, 48%);
+          border: 3px solid white;
+          border-radius: 50%;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        "></div>
+      `;
 
-    mapInstance.addListener('click', (e: google.maps.MapMouseEvent) => {
-      if (e.latLng) {
-        markerInstance.position = e.latLng;
-        setLatitude(String(e.latLng.lat()));
-        setLongitude(String(e.latLng.lng()));
-      }
-    });
+      const markerInstance = new window.google.maps.marker.AdvancedMarkerElement({
+        map: mapInstance,
+        position: { lat, lng },
+        content: markerContent,
+        gmpDraggable: true,
+      });
 
-    mapInstanceRef.current = mapInstance;
-    markerRef.current = markerInstance;
+      markerInstance.addListener('dragend', () => {
+        const pos = markerInstance.position as google.maps.LatLngLiteral | null;
+        if (pos) {
+          setLatitude(String(pos.lat));
+          setLongitude(String(pos.lng));
+        }
+      });
+
+      mapInstance.addListener('click', (e: google.maps.MapMouseEvent) => {
+        if (e.latLng) {
+          markerInstance.position = e.latLng;
+          setLatitude(String(e.latLng.lat()));
+          setLongitude(String(e.latLng.lng()));
+        }
+      });
+
+      mapInstanceRef.current = mapInstance;
+      markerRef.current = markerInstance;
+    } catch (e) {
+      console.error('Error initializing location picker map:', e);
+    }
 
     return () => {
-      if (markerRef.current) markerRef.current.map = null;
+      try {
+        if (markerRef.current) markerRef.current.map = null;
+      } catch (e) {
+        console.warn('Error cleaning up marker:', e);
+      }
     };
   }, [open]);
 
