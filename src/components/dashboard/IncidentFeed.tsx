@@ -42,7 +42,8 @@ const severityBorderColors: Record<IncidentSeverity, string> = {
 };
 
 export function IncidentFeed({ incidents, isLoading, selectedId, onSelect }: IncidentFeedProps) {
-  const activeIncidents = incidents.filter(i => i.status === 'active');
+  const safeIncidents = incidents || [];
+  const activeIncidents = safeIncidents.filter(i => i?.status === 'active');
   
   // Sort by severity priority
   const severityOrder: Record<IncidentSeverity, number> = {
@@ -82,7 +83,7 @@ export function IncidentFeed({ incidents, isLoading, selectedId, onSelect }: Inc
           ) : (
             <div className="space-y-2 px-4 pb-4">
               {sortedIncidents.map((incident) => {
-                const Icon = typeIcons[incident.type];
+                const Icon = incident.type && typeIcons[incident.type] ? typeIcons[incident.type] : AlertTriangle;
                 const severityColor = incident.severity ? severityColors[incident.severity] : 'bg-muted';
                 const borderColor = incident.severity ? severityBorderColors[incident.severity] : 'border-l-muted';
                 
