@@ -1,7 +1,8 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Shield, LogOut, User, Activity } from 'lucide-react';
+import { Shield, LogOut, Activity, BarChart3, History, Settings } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,13 +12,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { NotificationBell } from './NotificationBell';
+import { useIncidents } from '@/hooks/useIncidents';
+import { cn } from '@/lib/utils';
 
 export function DashboardHeader() {
   const { user, role, signOut } = useAuth();
+  const { incidents } = useIncidents();
+  const location = useLocation();
 
   const getInitials = (email: string) => {
     return email.slice(0, 2).toUpperCase();
   };
+
+  const navItems = [
+    { path: '/dashboard', label: 'Dashboard', icon: Activity },
+    { path: '/analytics', label: 'Analytics', icon: BarChart3 },
+    { path: '/history', label: 'History', icon: History },
+    ...(role === 'admin' ? [{ path: '/admin', label: 'Admin', icon: Settings }] : []),
+  ];
 
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
@@ -33,13 +46,28 @@ export function DashboardHeader() {
             </div>
           </div>
           
-          <div className="hidden md:flex items-center gap-2 ml-6 px-3 py-1.5 bg-status-active/10 rounded-full">
-            <Activity className="h-3 w-3 text-status-active animate-pulse" />
-            <span className="text-xs font-medium text-status-active">LIVE</span>
-          </div>
+          <nav className="hidden md:flex items-center gap-1 ml-6">
+            {navItems.map(item => (
+              <Link key={item.path} to={item.path}>
+                <Button 
+                  variant={location.pathname === item.path ? 'secondary' : 'ghost'} 
+                  size="sm"
+                  className={cn(
+                    "gap-2",
+                    location.pathname === item.path && "bg-secondary"
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Button>
+              </Link>
+            ))}
+          </nav>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <NotificationBell incidents={incidents} />
+          
           <Badge variant="secondary" className="hidden sm:flex">
             {role === 'admin' ? 'Administrator' : 'Operator'}
           </Badge>
