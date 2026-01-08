@@ -159,6 +159,14 @@ Provide your analysis in the following JSON format:
       };
     }
 
+    // Normalize severity to lowercase (AI may return uppercase)
+    const normalizedSeverity = analysis.severity.toLowerCase() as "low" | "medium" | "high" | "critical";
+    const validSeverities = ["low", "medium", "high", "critical"];
+    const finalSeverity = validSeverities.includes(normalizedSeverity) ? normalizedSeverity : "medium";
+    
+    // Update the analysis object with normalized severity
+    analysis.severity = finalSeverity;
+
     // Update the incident in the database with the AI analysis
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -175,7 +183,7 @@ Provide your analysis in the following JSON format:
             "Prefer": "return=minimal",
           },
           body: JSON.stringify({
-            severity: analysis.severity,
+            severity: finalSeverity,
             ai_analysis: analysis,
           }),
         }
