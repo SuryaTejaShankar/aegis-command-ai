@@ -2,12 +2,17 @@ import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { SystemStats } from '@/components/admin/SystemStats';
+import { BulkReanalyze } from '@/components/admin/BulkReanalyze';
 import { useAuth } from '@/contexts/AuthContext';
+import { useIncidents } from '@/hooks/useIncidents';
 import { Navigate } from 'react-router-dom';
 import { Settings, Loader2 } from 'lucide-react';
 
 export default function Admin() {
   const { role, loading } = useAuth();
+  const { incidents, refetch } = useIncidents();
+  
+  const incidentsWithoutAnalysis = incidents.filter(i => !i.ai_analysis).length;
 
   if (loading) {
     return (
@@ -41,6 +46,10 @@ export default function Admin() {
           </div>
 
           <SystemStats />
+          <BulkReanalyze 
+            incidentsWithoutAnalysis={incidentsWithoutAnalysis} 
+            onComplete={refetch} 
+          />
           <UserManagement />
         </div>
       </div>
