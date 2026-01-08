@@ -26,7 +26,30 @@ serve(async (req) => {
   }
 
   try {
-    const { incidentId, type, description, locationName } = await req.json() as IncidentInput;
+    const body = await req.json();
+    const { incidentId, type, description, locationName } = body as IncidentInput;
+    
+    // Validate required fields
+    if (!incidentId || typeof incidentId !== 'string') {
+      return new Response(JSON.stringify({ error: "Missing or invalid incidentId" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    if (!type || typeof type !== 'string') {
+      return new Response(JSON.stringify({ error: "Missing or invalid incident type" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    if (!description || typeof description !== 'string' || description.length < 5) {
+      return new Response(JSON.stringify({ error: "Description must be at least 5 characters" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {

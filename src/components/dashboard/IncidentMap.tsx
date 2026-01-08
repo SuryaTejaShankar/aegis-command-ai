@@ -81,10 +81,20 @@ export function IncidentMap({ incidents, selectedId, onMarkerClick }: IncidentMa
     }
 
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=marker&v=weekly`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=marker&v=weekly&loading=async`;
     script.async = true;
     script.defer = true;
-    script.onload = () => initializeMap();
+    script.onload = () => {
+      // Wait for google.maps to be fully available
+      const checkAndInit = () => {
+        if (window.google?.maps?.Map) {
+          initializeMap();
+        } else {
+          setTimeout(checkAndInit, 100);
+        }
+      };
+      checkAndInit();
+    };
     script.onerror = () => {
       setError('Failed to load Google Maps');
       setIsLoading(false);
@@ -131,7 +141,6 @@ export function IncidentMap({ incidents, selectedId, onMarkerClick }: IncidentMa
             border-radius: 50%;
             box-shadow: 0 2px 6px rgba(0,0,0,0.3);
             cursor: pointer;
-            ${incident.severity === 'critical' ? 'animation: pulse 1.5s ease-in-out infinite;' : ''}
           "></div>
         `;
 

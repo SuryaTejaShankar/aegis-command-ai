@@ -19,7 +19,8 @@ import {
   Brain,
   Loader2,
   Lightbulb,
-  Users
+  Users,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -38,8 +39,41 @@ const severityColors: Record<IncidentSeverity, string> = {
 
 export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDetailPanelProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
+
+  const handleReanalyze = async () => {
+    setIsAnalyzing(true);
+    try {
+      const response = await supabase.functions.invoke('analyze-incident', {
+        body: {
+          incidentId: incident.id,
+          type: incident.type,
+          description: incident.description,
+          locationName: incident.location_name || undefined,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Analysis failed');
+      }
+
+      toast({
+        title: 'Analysis complete',
+        description: 'AI analysis has been updated for this incident.',
+      });
+      onUpdate();
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Analysis failed',
+        description: error.message || 'Failed to analyze incident',
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleResolve = async () => {
     setIsUpdating(true);
@@ -203,9 +237,29 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
         {!incident.ai_analysis && (
           <>
             <Separator className="bg-border/50" />
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">AI analysis pending...</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm">AI analysis not available</span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReanalyze}
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Analyze Now
+                  </>
+                )}
+              </Button>
             </div>
           </>
         )}

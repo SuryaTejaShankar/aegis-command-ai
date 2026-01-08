@@ -44,12 +44,38 @@ export function ReportIncidentDialog({ onSuccess }: ReportIncidentDialogProps) {
   const [latitude, setLatitude] = useState('42.3601');
   const [longitude, setLongitude] = useState('-71.0942');
   const [locationName, setLocationName] = useState('');
+  const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { user } = useAuth();
   const { toast } = useToast();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+
+  // Reverse geocode to get location name from coordinates
+  const reverseGeocode = async (lat: number, lng: number) => {
+    if (!window.google?.maps?.Geocoder) return;
+    
+    setIsReverseGeocoding(true);
+    try {
+      const geocoder = new window.google.maps.Geocoder();
+      const response = await geocoder.geocode({ location: { lat, lng } });
+      
+      if (response.results && response.results.length > 0) {
+        // Get the first result's formatted address or a shorter component
+        const result = response.results[0];
+        const shortName = result.address_components?.find(
+          c => c.types.includes('premise') || c.types.includes('establishment') || c.types.includes('point_of_interest')
+        )?.long_name;
+        
+        setLocationName(shortName || result.formatted_address?.split(',').slice(0, 2).join(',') || '');
+      }
+    } catch (e) {
+      console.warn('Reverse geocoding failed:', e);
+    } finally {
+      setIsReverseGeocoding(false);
+    }
+  };
 
   // Initialize map for location selection
   useEffect(() => {
@@ -104,6 +130,7 @@ export function ReportIncidentDialog({ onSuccess }: ReportIncidentDialogProps) {
         if (pos) {
           setLatitude(String(pos.lat));
           setLongitude(String(pos.lng));
+          reverseGeocode(pos.lat, pos.lng);
         }
       });
 
@@ -112,6 +139,7 @@ export function ReportIncidentDialog({ onSuccess }: ReportIncidentDialogProps) {
           markerInstance.position = e.latLng;
           setLatitude(String(e.latLng.lat()));
           setLongitude(String(e.latLng.lng()));
+          reverseGeocode(e.latLng.lat(), e.latLng.lng());
         }
       });
 
