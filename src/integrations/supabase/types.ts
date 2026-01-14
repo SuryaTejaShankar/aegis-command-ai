@@ -76,6 +76,45 @@ export type Database = {
           },
         ]
       }
+      helpers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          latitude: number
+          longitude: number
+          mobile_number: string
+          name: string
+          role: Database["public"]["Enums"]["helper_role"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          latitude: number
+          longitude: number
+          mobile_number: string
+          name: string
+          role: Database["public"]["Enums"]["helper_role"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          latitude?: number
+          longitude?: number
+          mobile_number?: string
+          name?: string
+          role?: Database["public"]["Enums"]["helper_role"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       incidents: {
         Row: {
           ai_analysis: Json | null
@@ -180,6 +219,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      find_nearby_helpers: {
+        Args: { incident_lat: number; incident_lng: number; radius_km?: number }
+        Returns: {
+          distance_km: number
+          id: string
+          latitude: number
+          longitude: number
+          mobile_number: string
+          name: string
+          role: Database["public"]["Enums"]["helper_role"]
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -194,6 +245,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "operator"
+      helper_role: "security" | "medical" | "volunteer"
       incident_severity: "low" | "medium" | "high" | "critical"
       incident_status: "active" | "resolved" | "escalated"
       incident_type: "medical" | "fire" | "security" | "infrastructure"
@@ -325,6 +377,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "operator"],
+      helper_role: ["security", "medical", "volunteer"],
       incident_severity: ["low", "medium", "high", "critical"],
       incident_status: ["active", "resolved", "escalated"],
       incident_type: ["medical", "fire", "security", "infrastructure"],

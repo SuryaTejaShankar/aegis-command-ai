@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, format } from 'date-fns';
+import { NearbyHelpersSection } from './NearbyHelpersSection';
 import { 
   X, 
   MapPin, 
@@ -263,6 +264,9 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
             </div>
           </>
         )}
+
+        {/* Nearby Helpers - Only shown for critical/high severity incidents to admins */}
+        <NearbyHelpersSection incident={incident} />
 
         {/* Actions */}
         {incident.status === 'active' && (
