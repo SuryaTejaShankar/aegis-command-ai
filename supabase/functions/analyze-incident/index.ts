@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,6 +27,40 @@ serve(async (req) => {
   }
 
   try {
+    // ========== AUTHENTICATION CHECK ==========
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized: Missing or invalid authorization header' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Create Supabase client with user's auth token
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Validate the JWT token and get user claims
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: claimsError } = await supabaseClient.auth.getClaims(token);
+    
+    if (claimsError || !claimsData?.claims) {
+      console.error('Auth validation failed:', claimsError);
+      return new Response(JSON.stringify({ error: 'Unauthorized: Invalid token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const userId = claimsData.claims.sub;
+    const userEmail = claimsData.claims.email;
+    console.log(`Authenticated user: ${userEmail} (${userId})`);
+    // ========== END AUTHENTICATION CHECK ==========
+
     const body = await req.json();
     const { incidentId, type, description, locationName } = body as IncidentInput;
     
@@ -50,6 +85,23 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // ========== VERIFY INCIDENT ACCESS ==========
+    // Check that the incident exists and user has access (RLS will enforce this)
+    const { data: incident, error: incidentError } = await supabaseClient
+      .from('incidents')
+      .select('id, reported_by')
+      .eq('id', incidentId)
+      .single();
+
+    if (incidentError || !incident) {
+      console.error('Incident access error:', incidentError);
+      return new Response(JSON.stringify({ error: 'Incident not found or access denied' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    // ========== END INCIDENT ACCESS CHECK ==========
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -167,19 +219,18 @@ Provide your analysis in the following JSON format:
     // Update the analysis object with normalized severity
     analysis.severity = finalSeverity;
 
-    // Update the incident in the database with the AI analysis
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    // Update the incident in the database with the AI analysis using service role
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (supabaseUrl && supabaseKey) {
+    if (supabaseUrl && supabaseServiceKey) {
       const updateResponse = await fetch(
         `${supabaseUrl}/rest/v1/incidents?id=eq.${incidentId}`,
         {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            "apikey": supabaseKey,
-            "Authorization": `Bearer ${supabaseKey}`,
+            "apikey": supabaseServiceKey,
+            "Authorization": `Bearer ${supabaseServiceKey}`,
             "Prefer": "return=minimal",
           },
           body: JSON.stringify({
