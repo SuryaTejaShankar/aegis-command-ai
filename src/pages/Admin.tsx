@@ -3,6 +3,7 @@ import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { SystemStats } from '@/components/admin/SystemStats';
 import { BulkReanalyze } from '@/components/admin/BulkReanalyze';
+import { HelperManagement } from '@/components/admin/HelperManagement';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIncidents } from '@/hooks/useIncidents';
 import { Navigate } from 'react-router-dom';
@@ -50,6 +51,7 @@ export default function Admin() {
             incidentsWithoutAnalysis={incidentsWithoutAnalysis} 
             onComplete={refetch} 
           />
+          <HelperManagement />
           <UserManagement />
         </div>
       </div>
