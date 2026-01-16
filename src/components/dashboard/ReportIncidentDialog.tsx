@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { IncidentType } from '@/types/incident';
-import { Plus, Loader2, AlertTriangle, Flame, Shield, Wrench } from 'lucide-react';
+import { Plus, Loader2, AlertTriangle, Flame, Shield, Wrench, MapPin, CheckCircle2, ExternalLink } from 'lucide-react';
 
 interface ReportIncidentDialogProps {
   onSuccess: () => void;
@@ -41,28 +41,24 @@ export function ReportIncidentDialog({ onSuccess }: ReportIncidentDialogProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [type, setType] = useState<IncidentType | ''>('');
   const [description, setDescription] = useState('');
-  const [latitude, setLatitude] = useState('42.3601');
-  const [longitude, setLongitude] = useState('-71.0942');
+  const [latitude, setLatitude] = useState<string>('');
+  const [longitude, setLongitude] = useState<string>('');
   const [locationName, setLocationName] = useState('');
-  const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [locationCaptured, setLocationCaptured] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { user } = useAuth();
   const { toast } = useToast();
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
 
   // Reverse geocode to get location name from coordinates
   const reverseGeocode = async (lat: number, lng: number) => {
     if (!window.google?.maps?.Geocoder) return;
     
-    setIsReverseGeocoding(true);
     try {
       const geocoder = new window.google.maps.Geocoder();
       const response = await geocoder.geocode({ location: { lat, lng } });
       
       if (response.results && response.results.length > 0) {
-        // Get the first result's formatted address or a shorter component
         const result = response.results[0];
         const shortName = result.address_components?.find(
           c => c.types.includes('premise') || c.types.includes('establishment') || c.types.includes('point_of_interest')
@@ -72,91 +68,66 @@ export function ReportIncidentDialog({ onSuccess }: ReportIncidentDialogProps) {
       }
     } catch (e) {
       console.warn('Reverse geocoding failed:', e);
-    } finally {
-      setIsReverseGeocoding(false);
     }
   };
 
-  // Initialize map for location selection
-  useEffect(() => {
-    if (!open || !mapRef.current) return;
-
-    // Check if Google Maps is available
-    if (!window.google?.maps?.Map || !window.google?.maps?.marker?.AdvancedMarkerElement) {
-      console.warn('Google Maps not available for location picker');
+  // Get current location using browser Geolocation API
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast({
+        variant: 'destructive',
+        title: 'Geolocation not supported',
+        description: 'Your browser does not support GPS location.',
+      });
       return;
     }
 
-    try {
-      const lat = parseFloat(latitude) || 42.3601;
-      const lng = parseFloat(longitude) || -71.0942;
+    setIsGettingLocation(true);
+    setErrors({});
 
-      const mapInstance = new window.google.maps.Map(mapRef.current, {
-        center: { lat, lng },
-        zoom: 15,
-        mapId: 'aegis-report-map',
-        disableDefaultUI: true,
-        zoomControl: true,
-        styles: [
-          { elementType: 'geometry', stylers: [{ color: '#1a1f2e' }] },
-          { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1f2e' }] },
-          { elementType: 'labels.text.fill', stylers: [{ color: '#8a9ab0' }] },
-          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a3548' }] },
-          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
-        ],
-      });
-
-      const markerContent = document.createElement('div');
-      markerContent.innerHTML = `
-        <div style="
-          width: 32px;
-          height: 32px;
-          background-color: hsl(199, 89%, 48%);
-          border: 3px solid white;
-          border-radius: 50%;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        "></div>
-      `;
-
-      const markerInstance = new window.google.maps.marker.AdvancedMarkerElement({
-        map: mapInstance,
-        position: { lat, lng },
-        content: markerContent,
-        gmpDraggable: true,
-      });
-
-      markerInstance.addListener('dragend', () => {
-        const pos = markerInstance.position as google.maps.LatLngLiteral | null;
-        if (pos) {
-          setLatitude(String(pos.lat));
-          setLongitude(String(pos.lng));
-          reverseGeocode(pos.lat, pos.lng);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        setLatitude(String(lat));
+        setLongitude(String(lng));
+        setLocationCaptured(true);
+        
+        // Try to get location name via reverse geocoding
+        await reverseGeocode(lat, lng);
+        
+        setIsGettingLocation(false);
+        toast({
+          title: 'Location captured',
+          description: 'Your current GPS location has been detected.',
+        });
+      },
+      (error) => {
+        setIsGettingLocation(false);
+        let message = 'Could not get your location.';
+        if (error.code === error.PERMISSION_DENIED) {
+          message = 'Location permission denied. Please enable GPS access in your browser settings.';
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          message = 'Location unavailable. Please try again.';
+        } else if (error.code === error.TIMEOUT) {
+          message = 'Location request timed out. Please try again.';
         }
-      });
+        toast({
+          variant: 'destructive',
+          title: 'Location error',
+          description: message,
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  };
 
-      mapInstance.addListener('click', (e: google.maps.MapMouseEvent) => {
-        if (e.latLng) {
-          markerInstance.position = e.latLng;
-          setLatitude(String(e.latLng.lat()));
-          setLongitude(String(e.latLng.lng()));
-          reverseGeocode(e.latLng.lat(), e.latLng.lng());
-        }
-      });
-
-      mapInstanceRef.current = mapInstance;
-      markerRef.current = markerInstance;
-    } catch (e) {
-      console.error('Error initializing location picker map:', e);
-    }
-
-    return () => {
-      try {
-        if (markerRef.current) markerRef.current.map = null;
-      } catch (e) {
-        console.warn('Error cleaning up marker:', e);
-      }
-    };
-  }, [open]);
+  // Generate Google Maps link
+  const getGoogleMapsLink = () => {
+    if (!latitude || !longitude) return null;
+    return `https://www.google.com/maps?q=${latitude},${longitude}`;
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -166,13 +137,14 @@ export function ReportIncidentDialog({ onSuccess }: ReportIncidentDialogProps) {
       newErrors.description = 'Description must be at least 10 characters';
     }
 
-    const lat = parseFloat(latitude);
-    const lng = parseFloat(longitude);
-    if (isNaN(lat) || lat < -90 || lat > 90) {
-      newErrors.latitude = 'Invalid latitude';
-    }
-    if (isNaN(lng) || lng < -180 || lng > 180) {
-      newErrors.longitude = 'Invalid longitude';
+    if (!locationCaptured || !latitude || !longitude) {
+      newErrors.location = 'Please capture your current location';
+    } else {
+      const lat = parseFloat(latitude);
+      const lng = parseFloat(longitude);
+      if (isNaN(lat) || lat < -90 || lat > 90 || isNaN(lng) || lng < -180 || lng > 180) {
+        newErrors.location = 'Invalid location coordinates';
+      }
     }
 
     setErrors(newErrors);
@@ -304,36 +276,67 @@ export function ReportIncidentDialog({ onSuccess }: ReportIncidentDialogProps) {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label>Location * (Click map or drag marker)</Label>
-              <div
-                ref={mapRef}
-                className="h-[200px] rounded-lg border border-border"
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="latitude" className="text-xs text-muted-foreground">
-                    Latitude
-                  </Label>
-                  <Input
-                    id="latitude"
-                    value={latitude}
-                    onChange={(e) => setLatitude(e.target.value)}
-                    className={errors.latitude ? 'border-destructive' : ''}
-                  />
+            <div className="space-y-3">
+              <Label>Location *</Label>
+              
+              <Button
+                type="button"
+                variant={locationCaptured ? 'outline' : 'default'}
+                className="w-full"
+                onClick={handleGetCurrentLocation}
+                disabled={isGettingLocation}
+              >
+                {isGettingLocation ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Detecting location...
+                  </>
+                ) : locationCaptured ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+                    Location Captured - Click to Update
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="h-4 w-4 mr-2" />
+                    Use Current Location
+                  </>
+                )}
+              </Button>
+              
+              {errors.location && (
+                <p className="text-sm text-destructive">{errors.location}</p>
+              )}
+
+              {locationCaptured && (
+                <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Coordinates:</span>
+                    <span className="font-mono text-xs">
+                      {parseFloat(latitude).toFixed(6)}, {parseFloat(longitude).toFixed(6)}
+                    </span>
+                  </div>
+                  
+                  {locationName && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Location:</span>
+                      <span className="text-right max-w-[200px] truncate">{locationName}</span>
+                    </div>
+                  )}
+                  
+                  {getGoogleMapsLink() && (
+                    <a
+                      href={getGoogleMapsLink()!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      View on Google Maps
+                    </a>
+                  )}
                 </div>
-                <div>
-                  <Label htmlFor="longitude" className="text-xs text-muted-foreground">
-                    Longitude
-                  </Label>
-                  <Input
-                    id="longitude"
-                    value={longitude}
-                    onChange={(e) => setLongitude(e.target.value)}
-                    className={errors.longitude ? 'border-destructive' : ''}
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="space-y-2">
