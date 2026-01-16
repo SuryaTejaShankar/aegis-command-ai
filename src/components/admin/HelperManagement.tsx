@@ -29,6 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useHelpers } from '@/hooks/useHelpers';
+import { useToast } from '@/hooks/use-toast';
 import { HelperRole, CreateHelperInput } from '@/types/helper';
 import { 
   UserPlus, 
@@ -39,9 +40,11 @@ import {
   Users,
   Loader2,
   Trash2,
-  Edit
+  Edit,
+  AlertCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const roleIcons: Record<HelperRole, React.ReactNode> = {
   security: <Shield className="h-4 w-4" />,
@@ -57,6 +60,7 @@ const roleColors: Record<HelperRole, string> = {
 
 export function HelperManagement() {
   const { helpers, isLoading, createHelper, deleteHelper, toggleHelperStatus } = useHelpers();
+  const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<CreateHelperInput>({
@@ -89,21 +93,43 @@ export function HelperManagement() {
     setIsSubmitting(false);
   };
 
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+
   const handleGetCurrentLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setFormData(prev => ({
-            ...prev,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          }));
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-        }
-      );
+    if (!navigator.geolocation) {
+      toast({
+        variant: 'destructive',
+        title: 'Location not supported',
+        description: 'Your browser does not support geolocation.',
+      });
+      return;
     }
+
+    setIsGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFormData(prev => ({
+          ...prev,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }));
+        toast({
+          title: 'Location captured',
+          description: `Lat: ${position.coords.latitude.toFixed(4)}, Lng: ${position.coords.longitude.toFixed(4)}`,
+        });
+        setIsGettingLocation(false);
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Location error',
+          description: error.message || 'Could not get your current location. Please enter coordinates manually.',
+        });
+        setIsGettingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -226,9 +252,14 @@ export function HelperManagement() {
                 variant="outline"
                 className="w-full"
                 onClick={handleGetCurrentLocation}
+                disabled={isGettingLocation}
               >
-                <MapPin className="h-4 w-4 mr-2" />
-                Use Current Location
+                {isGettingLocation ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <MapPin className="h-4 w-4 mr-2" />
+                )}
+                {isGettingLocation ? 'Getting Location...' : 'Use Current Location'}
               </Button>
               
               <div className="flex items-center justify-between">
