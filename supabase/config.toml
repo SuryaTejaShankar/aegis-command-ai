@@ -2,3 +2,12 @@ project_id = "ncfauadwzcfqafnggpxf"
 
 [functions.analyze-incident]
 verify_jwt = false
+
+[functions.send-whatsapp-alert]
+verify_jwt = false
+
+[functions.send-sms-alert]
+verify_jwt = false
+
+[functions.trigger-emergency-alerts]
+verify_jwt = false
