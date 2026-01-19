@@ -7,13 +7,13 @@ import { Incident, IncidentSeverity } from '@/types/incident';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { formatDistanceToNow, format } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { NearbyHelpersSection } from './NearbyHelpersSection';
+import { IncidentTimeline } from './IncidentTimeline';
 import { 
   X, 
   MapPin, 
   Clock, 
-  User, 
   CheckCircle, 
   AlertTriangle,
   ArrowUp,
@@ -21,7 +21,9 @@ import {
   Loader2,
   Lightbulb,
   Users,
-  RefreshCw
+  RefreshCw,
+  Eye,
+  History
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -41,8 +43,12 @@ const severityColors: Record<IncidentSeverity, string> = {
 export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDetailPanelProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const { user } = useAuth();
+  const [showTimeline, setShowTimeline] = useState(false);
+  const { user, role } = useAuth();
   const { toast } = useToast();
+
+  // Check if user can modify this incident (reporter or admin only)
+  const canModify = user && (user.id === incident.reported_by || role === 'admin');
 
   const handleReanalyze = async () => {
     setIsAnalyzing(true);
@@ -77,6 +83,15 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
   };
 
   const handleResolve = async () => {
+    if (!canModify) {
+      toast({
+        variant: 'destructive',
+        title: 'Access Denied',
+        description: 'Only the reporter or admin can resolve this incident.',
+      });
+      return;
+    }
+
     setIsUpdating(true);
     const { error } = await supabase
       .from('incidents')
@@ -96,6 +111,18 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
         description: error.message,
       });
     } else {
+      // Log the resolution
+      await supabase.from('audit_logs').insert({
+        action: 'incident_resolved',
+        actor_id: user?.id,
+        actor_email: user?.email,
+        incident_id: incident.id,
+        metadata: {
+          previous_status: incident.status,
+          new_status: 'resolved',
+        },
+      });
+
       toast({
         title: 'Incident resolved',
         description: 'The incident has been marked as resolved.',
@@ -106,6 +133,15 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
   };
 
   const handleEscalate = async () => {
+    if (!canModify) {
+      toast({
+        variant: 'destructive',
+        title: 'Access Denied',
+        description: 'Only the reporter or admin can escalate this incident.',
+      });
+      return;
+    }
+
     setIsUpdating(true);
     const { error } = await supabase
       .from('incidents')
@@ -121,6 +157,18 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
         description: error.message,
       });
     } else {
+      // Log the escalation
+      await supabase.from('audit_logs').insert({
+        action: 'incident_escalated',
+        actor_id: user?.id,
+        actor_email: user?.email,
+        incident_id: incident.id,
+        metadata: {
+          previous_status: incident.status,
+          new_status: 'escalated',
+        },
+      });
+
       toast({
         title: 'Incident escalated',
         description: 'The incident has been escalated for further attention.',
@@ -136,6 +184,12 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
           <CardTitle className="text-lg flex items-center gap-2">
             <Brain className="h-4 w-4 text-primary" />
             Incident Details
+            {!canModify && (
+              <Badge variant="secondary" className="ml-2 text-xs flex items-center gap-1">
+                <Eye className="h-3 w-3" />
+                View Only
+              </Badge>
+            )}
           </CardTitle>
           <p className="text-xs text-muted-foreground">
             AI-powered analysis and recommendations
@@ -268,8 +322,24 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
         {/* Nearby Helpers - Only shown for critical/high severity incidents to admins */}
         <NearbyHelpersSection incident={incident} />
 
-        {/* Actions */}
-        {incident.status === 'active' && (
+        {/* Incident Timeline Toggle */}
+        <Separator className="bg-border/50" />
+        <div className="space-y-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => setShowTimeline(!showTimeline)}
+          >
+            <History className="h-4 w-4 mr-2" />
+            {showTimeline ? 'Hide' : 'Show'} Activity Timeline
+          </Button>
+          
+          {showTimeline && <IncidentTimeline incidentId={incident.id} />}
+        </div>
+
+        {/* Actions - Only for authorized users */}
+        {incident.status === 'active' && canModify && (
           <>
             <Separator className="bg-border/50" />
             <div className="flex gap-2">
@@ -294,6 +364,19 @@ export function IncidentDetailPanel({ incident, onClose, onUpdate }: IncidentDet
                 <ArrowUp className="h-4 w-4 mr-2" />
                 Escalate
               </Button>
+            </div>
+          </>
+        )}
+
+        {/* View-only notice for non-authorized users */}
+        {incident.status === 'active' && !canModify && (
+          <>
+            <Separator className="bg-border/50" />
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <p className="text-xs text-muted-foreground text-center">
+                <Eye className="h-3 w-3 inline mr-1" />
+                Only the reporter or an admin can modify this incident
+              </p>
             </div>
           </>
         )}
