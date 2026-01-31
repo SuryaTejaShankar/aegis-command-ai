@@ -77,26 +77,75 @@ Deno.serve(async (req) => {
     } = body;
 
     // Validate required fields
-    if (!incidentId || !incidentType || !severity || !latitude || !longitude || !helperPhone) {
+    if (!incidentId || !incidentType || !severity || latitude === undefined || longitude === undefined || !helperPhone) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // Validate UUID format for incidentId
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(incidentId)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid incidentId format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate coordinates
+    if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
+        latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return new Response(
+        JSON.stringify({ error: "Invalid coordinates" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate phone number format (6-15 digits for international)
+    const cleanPhone = helperPhone.replace(/\D/g, '');
+    if (cleanPhone.length < 6 || cleanPhone.length > 15) {
+      return new Response(
+        JSON.stringify({ error: "Invalid phone number format (must be 6-15 digits)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate description length
+    if (description && description.length > 5000) {
+      return new Response(
+        JSON.stringify({ error: "Description too long (max 5000 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate severity
+    const validSeverities = ['low', 'medium', 'high', 'critical'];
+    if (!validSeverities.includes(severity.toLowerCase())) {
+      return new Response(
+        JSON.stringify({ error: "Invalid severity (must be low, medium, high, or critical)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Sanitize text fields
+    const sanitizedDescription = (description || '').substring(0, 5000).replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedHelperName = (helperName || 'Unknown').substring(0, 100).replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedIncidentType = incidentType.substring(0, 50).replace(/[\x00-\x1F\x7F]/g, '');
+
     // Generate Google Maps link
     const mapsLink = `https://maps.google.com/?q=${latitude},${longitude}`;
 
     // Generate concise SMS message (max 160 chars for single SMS)
     const severityEmoji = severity === "critical" ? "🚨" : severity === "high" ? "⚠️" : "📢";
-    const shortType = incidentType.charAt(0).toUpperCase() + incidentType.slice(1);
-    const shortDesc = description.length > 50 ? description.substring(0, 47) + "..." : description;
+    const shortType = sanitizedIncidentType.charAt(0).toUpperCase() + sanitizedIncidentType.slice(1);
+    const shortDesc = sanitizedDescription.length > 50 ? sanitizedDescription.substring(0, 47) + "..." : sanitizedDescription;
     
     const smsMessage = `${severityEmoji} AEGIS ALERT\n${shortType} - ${severity.toUpperCase()}\n${shortDesc}\nLocation: ${mapsLink}`;
 
     // Generate SMS deep link (works on mobile devices)
     const encodedMessage = encodeURIComponent(smsMessage);
-    const smsLink = `sms:${helperPhone}?body=${encodedMessage}`;
+    const smsLink = `sms:${cleanPhone}?body=${encodedMessage}`;
 
     // Log the alert generation using service role client
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
@@ -108,10 +157,10 @@ Deno.serve(async (req) => {
       incident_id: incidentId,
       metadata: {
         helper_id: helperId,
-        helper_name: helperName,
-        helper_phone: helperPhone.replace(/\d(?=\d{4})/g, "*"), // Mask phone for privacy
+        helper_name: sanitizedHelperName,
+        helper_phone: cleanPhone.replace(/\d(?=\d{4})/g, "*"), // Mask phone for privacy
         severity,
-        incident_type: incidentType,
+        incident_type: sanitizedIncidentType,
       },
     });
 
@@ -121,7 +170,7 @@ Deno.serve(async (req) => {
         smsLink,
         mapsLink,
         message: smsMessage,
-        helperName,
+        helperName: sanitizedHelperName,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

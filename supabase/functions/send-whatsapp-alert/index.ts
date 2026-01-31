@@ -89,24 +89,69 @@ serve(async (req) => {
       });
     }
 
-    // Validate mobile number format (basic check)
-    const cleanMobile = helperMobile.replace(/\D/g, '');
-    if (cleanMobile.length < 10) {
-      return new Response(JSON.stringify({ error: 'Invalid mobile number format' }), {
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(incidentId) || !uuidRegex.test(helperId)) {
+      return new Response(JSON.stringify({ error: 'Invalid ID format' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    // Validate and sanitize mobile number (6-15 digits for international)
+    const cleanMobile = helperMobile.replace(/\D/g, '');
+    if (cleanMobile.length < 6 || cleanMobile.length > 15) {
+      return new Response(JSON.stringify({ error: 'Invalid mobile number format (must be 6-15 digits)' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate coordinates if provided
+    if (latitude !== undefined && longitude !== undefined) {
+      if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
+          latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        return new Response(JSON.stringify({ error: 'Invalid coordinates' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Validate description length
+    if (description && description.length > 5000) {
+      return new Response(JSON.stringify({ error: 'Description too long (max 5000 characters)' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate severity if provided
+    if (severity) {
+      const validSeverities = ['low', 'medium', 'high', 'critical'];
+      if (!validSeverities.includes(severity.toLowerCase())) {
+        return new Response(JSON.stringify({ error: 'Invalid severity (must be low, medium, high, or critical)' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Sanitize text fields
+    const sanitizedDescription = (description || '').substring(0, 5000).replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedLocationName = (locationName || 'Unknown location').substring(0, 200).replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedHelperName = (helperName || 'Unknown').substring(0, 100).replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedIncidentType = (incidentType || 'Unknown').substring(0, 50).replace(/[\x00-\x1F\x7F]/g, '');
+
     // Generate Google Maps link
     const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
 
-    // Create short AI summary for alert
+    // Create short AI summary for alert (using sanitized content)
     const alertMessage = encodeURIComponent(
-      `🚨 EMERGENCY ALERT - ${incidentType.toUpperCase()}\n\n` +
+      `🚨 EMERGENCY ALERT - ${sanitizedIncidentType.toUpperCase()}\n\n` +
       `Severity: ${severity?.toUpperCase() || 'UNKNOWN'}\n` +
-      `Location: ${locationName || 'Unknown location'}\n\n` +
-      `${description.substring(0, 150)}${description.length > 150 ? '...' : ''}\n\n` +
+      `Location: ${sanitizedLocationName}\n\n` +
+      `${sanitizedDescription.substring(0, 150)}${sanitizedDescription.length > 150 ? '...' : ''}\n\n` +
       `📍 Location: ${mapsLink}\n\n` +
       `Please respond immediately if available.`
     );
@@ -122,11 +167,11 @@ serve(async (req) => {
       incident_id: incidentId,
       metadata: {
         helper_id: helperId,
-        helper_name: helperName,
+        helper_name: sanitizedHelperName,
         // Do NOT log the actual phone number for privacy
         alert_type: 'whatsapp_deep_link',
         severity: severity,
-        incident_type: incidentType
+        incident_type: sanitizedIncidentType
       }
     });
     // ========== END AUDIT LOG ==========
