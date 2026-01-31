@@ -87,19 +87,63 @@ Deno.serve(async (req) => {
     } = body;
 
     // Validate required fields
-    if (!incidentId || !incidentType || !severity || !latitude || !longitude) {
+    if (!incidentId || !incidentType || !severity || latitude === undefined || longitude === undefined) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Find nearby helpers
+    // Validate UUID format for incidentId
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(incidentId)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid incidentId format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate coordinates
+    if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
+        latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return new Response(
+        JSON.stringify({ error: "Invalid coordinates (latitude: -90 to 90, longitude: -180 to 180)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate radius bounds (0.1 to 50 km)
+    const validatedRadiusKm = Math.min(Math.max(radiusKm, 0.1), 50);
+
+    // Validate severity
+    const validSeverities = ['low', 'medium', 'high', 'critical'];
+    if (!validSeverities.includes(severity.toLowerCase())) {
+      return new Response(
+        JSON.stringify({ error: "Invalid severity (must be low, medium, high, or critical)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate description length
+    if (description && description.length > 5000) {
+      return new Response(
+        JSON.stringify({ error: "Description too long (max 5000 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Sanitize text fields
+    const sanitizedDescription = (description || '').substring(0, 5000).replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedLocationName = (locationName || 'See map link').substring(0, 200).replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedIncidentType = incidentType.substring(0, 50).replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedAiSummary = (aiSummary || sanitizedDescription.substring(0, 100)).substring(0, 500).replace(/[\x00-\x1F\x7F]/g, '');
+
+    // Find nearby helpers using validated radius
     const { data: helpers, error: helpersError } = await supabaseClient
       .rpc("find_nearby_helpers", {
         incident_lat: latitude,
         incident_lng: longitude,
-        radius_km: radiusKm,
+        radius_km: validatedRadiusKm,
       });
 
     if (helpersError) {
@@ -132,21 +176,20 @@ Deno.serve(async (req) => {
       timeStyle: "short",
     });
 
-    // Generate alert content
+    // Generate alert content using sanitized inputs
     const severityEmoji = severity === "critical" ? "🚨" : severity === "high" ? "⚠️" : "📢";
-    const shortType = incidentType.charAt(0).toUpperCase() + incidentType.slice(1);
-    const summary = aiSummary || description.substring(0, 100);
+    const shortType = sanitizedIncidentType.charAt(0).toUpperCase() + sanitizedIncidentType.slice(1);
     
     // Generate alerts for each helper
     const alertResults = helpers.map((helper: NearbyHelper) => {
-      // WhatsApp message
+      // WhatsApp message with sanitized content
       const whatsappMessage = `${severityEmoji} *AEGIS EMERGENCY ALERT*
 
 *Type:* ${shortType}
 *Severity:* ${severity.toUpperCase()}
-*Location:* ${locationName || "See map link"}
+*Location:* ${sanitizedLocationName}
 
-*Summary:* ${summary}
+*Summary:* ${sanitizedAiSummary}
 
 📍 *Google Maps:* ${mapsLink}
 
@@ -157,8 +200,8 @@ _You are ${helper.distance_km.toFixed(2)} km away. Please respond immediately if
       const encodedWhatsappMessage = encodeURIComponent(whatsappMessage);
       const whatsappLink = `https://wa.me/${helper.mobile_number.replace(/[^0-9]/g, "")}?text=${encodedWhatsappMessage}`;
 
-      // SMS message (shorter)
-      const smsMessage = `${severityEmoji} AEGIS: ${shortType} - ${severity.toUpperCase()}. ${summary.substring(0, 50)}... Location: ${mapsLink}`;
+      // SMS message (shorter) with sanitized content
+      const smsMessage = `${severityEmoji} AEGIS: ${shortType} - ${severity.toUpperCase()}. ${sanitizedAiSummary.substring(0, 50)}... Location: ${mapsLink}`;
       const encodedSmsMessage = encodeURIComponent(smsMessage);
       const smsLink = `sms:${helper.mobile_number}?body=${encodedSmsMessage}`;
 
@@ -184,9 +227,9 @@ _You are ${helper.distance_km.toFixed(2)} km away. Please respond immediately if
       incident_id: incidentId,
       metadata: {
         severity,
-        incident_type: incidentType,
+        incident_type: sanitizedIncidentType,
         helpers_count: helpers.length,
-        radius_km: radiusKm,
+        radius_km: validatedRadiusKm,
         helper_ids: helpers.map((h: NearbyHelper) => h.id),
       },
     });
